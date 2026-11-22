@@ -1,0 +1,8 @@
+@import "../zapols.css";
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f6f2;
+}
