@@ -48,8 +48,8 @@ const SERVICE_FEE = 100;
 const PAYMENTS = ["Transfer on delivery", "Paid via transfer", "Cash"];
 const DEFAULT_SETTINGS: Settings = {
   vendorName: "Zapols Restaurant & Lounge",
-  vendorPhone: "2348000000000",
-  bankInfo: "",
+  vendorPhone: "2347082291264",
+  bankInfo: "7082291264 - Moniepoint MFB",
   staffPin: "1234",
 };
 
@@ -156,7 +156,7 @@ const B = (...c: (string | false | undefined | null)[]) => c.filter(Boolean).joi
 
 /* ---------- Main Component ---------- */
 export default function ZapolsOrdering() {
-  const [settings, setSettings] = useStored<Settings>("zapols_settings_v4", DEFAULT_SETTINGS);
+  const [settings, setSettings] = useStored<Settings>("zapols_settings_v5", DEFAULT_SETTINGS);
   const [menu, setMenu] = useStored<Item[]>("zapols_menu_v4", DEFAULT_MENU);
   const [history, setHistory] = useStored<Entry[]>("zapols_history_v4", []);
   const [tickets, setTickets] = useStored<Ticket[]>("zapols_tickets_v4", []);

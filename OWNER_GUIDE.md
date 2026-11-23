@@ -121,9 +121,9 @@ Under the **Settings (⚙)** modal, you can update:
 | Setting | Description | Example |
 | :--- | :--- | :--- |
 | **Restaurant Name** | Displays in the app header and on WhatsApp ticket headers | `Zapols Restaurant & Lounge` |
-| **WhatsApp Phone** | The WhatsApp number that receives all orders | `2348012345678` *(Start with country code, no `+`)* |
-| **Bank Account Info** | Automatically included in tickets when customer selects bank transfer | `GTBank - 0123456789 - Zapols Lounge` |
-| **Staff PIN** | The secret PIN to access the kitchen board & settings | Change from `1234` to your custom PIN |
+| **WhatsApp Phone** | The WhatsApp number that receives all orders | `2347082291264` *(Default configured)* |
+| **Bank Account Info** | Automatically included in tickets when customer selects bank transfer | `7082291264 - Moniepoint MFB` |
+| **Staff PIN** | The secret PIN to access the kitchen board & settings | Default: `1234` |
 
 ---
 

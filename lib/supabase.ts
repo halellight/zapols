@@ -16,8 +16,11 @@ export type DbOrder = {
   items_json?: any;
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+const supabaseUrl = rawUrl.trim().replace(/^["']|["']$/g, "").trim();
+const supabaseAnonKey = rawKey.trim().replace(/^["']|["']$/g, "").trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
