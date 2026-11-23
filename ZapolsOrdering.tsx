@@ -677,10 +677,10 @@ export default function ZapolsOrdering() {
             </div>
           )}
 
-          <p className="zp-intro">
+          {/* <p className="zp-intro">
             Build your meal plate, enter your floor or desk, and tap send. Every order receives a secure 4-digit pickup code
             for the kitchen handover.
-          </p>
+          </p> */}
 
           {/* Sticky Filters & Search */}
           <div className="zp-filters">
