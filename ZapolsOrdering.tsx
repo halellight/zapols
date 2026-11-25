@@ -63,8 +63,13 @@ const m = (id: string, name: string, price: number, category: string, desc = "")
 });
 
 const DEFAULT_MENU: Item[] = [
+  m("p1", "Goat Meat", 700, "Proteins", "Peppered, per piece"),
+  m("p2", "Beef", 500, "Proteins", "Stewed, per piece"),
+  m("p3", "Pomo (Cow Skin)", 500, "Proteins", "Spiced, per piece"),
+  m("p4", "Titus Fish", 1500, "Proteins", "Fried or stewed, per piece"),
+  m("p5", "Boiled Egg", 300, "Proteins", "Whole egg"),
   m("r1", "Jollof Rice", 1000, "Rice", "Smoky party jollof"),
-  m("r2", "White Rice", 1000, "Rice", "Steamed white rice"),
+  m("r2", "White Rice", 1000, "Rice", "Steamed white rice and stew"),
   m("s1", "Coleslaw", 500, "Sides", "Cabbage and carrot"),
   m("s2", "Fried Plantain", 500, "Sides", "Golden dodo, per portion"),
   m("s3", "Beans", 500, "Sides", "Seasoned beans"),
@@ -79,13 +84,24 @@ const DEFAULT_MENU: Item[] = [
   m("w2", "Garri (Eba)", 500, "Swallows", "Per piece"),
   m("w3", "Semolina", 500, "Swallows", "Per piece"),
   m("w4", "Fufu", 500, "Swallows", "Per piece"),
-  m("p1", "Goat Meat", 700, "Proteins", "Peppered, per piece"),
-  m("p2", "Beef", 500, "Proteins", "Stewed, per piece"),
-  m("p3", "Pomo (Cow Skin)", 500, "Proteins", "Spiced, per piece"),
-  m("p4", "Titus Fish", 1500, "Proteins", "Fried or stewed, per piece"),
-  m("p5", "Boiled Egg", 300, "Proteins", "Whole egg"),
   m("x1", "Bottled Water", 250, "Extras", "Chilled 75cl"),
 ];
+
+const CATEGORY_PRIORITY: Record<string, number> = {
+  Proteins: 1,
+  Rice: 2,
+  Sides: 3,
+  Swallows: 4,
+  Soups: 5,
+  Extras: 6,
+};
+
+const sortCategories = (a: string, b: string) => {
+  const pa = CATEGORY_PRIORITY[a] ?? 99;
+  const pb = CATEGORY_PRIORITY[b] ?? 99;
+  if (pa !== pb) return pa - pb;
+  return a.localeCompare(b);
+};
 
 /* ---------- Helpers ---------- */
 function useStored<T>(key: string, fallback: T) {
@@ -157,7 +173,7 @@ const B = (...c: (string | false | undefined | null)[]) => c.filter(Boolean).joi
 /* ---------- Main Component ---------- */
 export default function ZapolsOrdering() {
   const [settings, setSettings] = useStored<Settings>("zapols_settings_v5", DEFAULT_SETTINGS);
-  const [menu, setMenu] = useStored<Item[]>("zapols_menu_v4", DEFAULT_MENU);
+  const [menu, setMenu] = useStored<Item[]>("zapols_menu_v5", DEFAULT_MENU);
   const [history, setHistory] = useStored<Entry[]>("zapols_history_v4", []);
   const [tickets, setTickets] = useStored<Ticket[]>("zapols_tickets_v4", []);
   const [profile, setProfile] = useStored<{ name: string; loc: string }>("zapols_profile_v4", { name: "", loc: "" });
@@ -294,13 +310,14 @@ export default function ZapolsOrdering() {
   const service = count ? SERVICE_FEE : 0;
   const total = subtotal + packFee + service;
 
-  const categories = ["All", ...Array.from(new Set(menu.map((i) => i.category)))];
+  const categories = ["All", ...Array.from(new Set(menu.map((i) => i.category))).sort(sortCategories)];
   const shown = menu.filter(
     (i) =>
       (cat === "All" || i.category === cat) &&
       (!query.trim() || `${i.name} ${i.desc || ""}`.toLowerCase().includes(query.trim().toLowerCase()))
   );
   const grouped = shown.reduce<Record<string, Item[]>>((a, i) => ((a[i.category] ||= []).push(i), a), {});
+  const sortedGrouped = Object.entries(grouped).sort(([catA], [catB]) => sortCategories(catA, catB));
 
   const ticketText = (targetId = orderId, targetCode = code) => {
     const itemLines = lines.length
@@ -585,7 +602,7 @@ export default function ZapolsOrdering() {
 
   /* Settings */
   const [draft, setDraft] = useState(settings);
-  const [nu, setNu] = useState({ name: "", price: "", category: "Rice" });
+  const [nu, setNu] = useState({ name: "", price: "", category: "Proteins" });
   const openSettings = () => {
     setDraft(settings);
     setModal("settings");
@@ -706,7 +723,7 @@ export default function ZapolsOrdering() {
             <p className="zp-empty">No menu items match your search. Try another category or keyword.</p>
           )}
 
-          {Object.entries(grouped).map(([c, items]) => (
+          {sortedGrouped.map(([c, items]) => (
             <section key={c} className="zp-section">
               <h2 className="zp-section-title">{c}</h2>
               <ul className="zp-grid">
