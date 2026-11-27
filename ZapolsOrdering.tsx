@@ -25,6 +25,7 @@ export type Ticket = {
   total: number;
   payment: string;
   time: string;
+  createdAt?: string;
   code: string;
   status: Status;
 };
@@ -137,6 +138,40 @@ const newOrderId = () =>
 const newCode = () => String(Math.floor(1000 + Math.random() * 9000));
 const cleanCode = (str: string) => (str || "").replace(/\D/g, "").trim();
 
+function getOrdinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+}
+
+export function formatOrderDateGroup(isoString?: string): string {
+  if (!isoString) return "Today";
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return "Today";
+
+  const now = new Date();
+  const dMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const diffMs = nowMidnight.getTime() - dMidnight.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+
+  const weekday = date.toLocaleDateString("en-NG", { weekday: "long" });
+  const day = date.getDate();
+  const suffix = getOrdinalSuffix(day);
+  const month = date.toLocaleDateString("en-NG", { month: "long" });
+  const yearSuffix = date.getFullYear() !== now.getFullYear() ? ` ${date.getFullYear()}` : "";
+
+  return `${weekday} ${day}${suffix} ${month}${yearSuffix}`;
+}
+
 /* ---------- Mobile Sheet Component ---------- */
 function Sheet({
   title,
@@ -192,10 +227,28 @@ export default function ZapolsOrdering() {
   const [activePlacedOrder, setActivePlacedOrder] = useState<Ticket | null>(null);
   const [view, setView] = useState<"customer" | "kitchen">("customer");
   const [staff, setStaff] = useState(false);
-  const [modal, setModal] = useState<null | "settings" | "pin" | "history" | "confirmed">(null);
+  const [modal, setModal] = useState<null | "settings" | "pin" | "history" | "confirmed" | "phoneOrder">(null);
   const [pin, setPin] = useState("");
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
   const [revealedCodes, setRevealedCodes] = useState<Record<string, boolean>>({});
+
+  // Phone Call / Walk-In Order State for Kitchen Staff
+  const [phoneName, setPhoneName] = useState("");
+  const [phoneLoc, setPhoneLoc] = useState("");
+  const [phoneNum, setPhoneNum] = useState("");
+  const [phoneCart, setPhoneCart] = useState<Record<string, number>>({});
+  const [phonePack, setPhonePack] = useState<Pack>("takeaway");
+  const [phonePay, setPhonePay] = useState(PAYMENTS[0]);
+  const [phoneNotes, setPhoneNotes] = useState("");
+  const [phoneOrderId, setPhoneOrderId] = useState(newOrderId);
+  const [phoneCode, setPhoneCode] = useState(newCode);
+  const [phoneQuery, setPhoneQuery] = useState("");
+  const [phoneCat, setPhoneCat] = useState("All");
+
+  // Kitchen Filters
+  const [kStatusFilter, setKStatusFilter] = useState<"all" | "open" | "delivered">("open");
+  const [kDateFilter, setKDateFilter] = useState<"all" | "today" | "yesterday" | "older">("all");
+  const [showPasteBox, setShowPasteBox] = useState(false);
 
   const taps = useRef({ n: 0, t: 0 as ReturnType<typeof setTimeout> | 0 });
   const checkoutRef = useRef<HTMLElement>(null);
@@ -234,11 +287,16 @@ export default function ZapolsOrdering() {
               total: Number(o.total),
               payment: o.payment_method,
               time: o.created_at ? new Date(o.created_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }) : clock(),
+              createdAt: o.created_at || new Date().toISOString(),
               code: o.pickup_code,
               status: o.status,
             });
           });
-          return Array.from(map.values()).sort((a, b) => (b.id > a.id ? 1 : -1));
+          return Array.from(map.values()).sort((a, b) => {
+            const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return tb - ta;
+          });
         });
       }
     });
@@ -260,6 +318,7 @@ export default function ZapolsOrdering() {
             total: Number(o.total),
             payment: o.payment_method,
             time: clock(),
+            createdAt: o.created_at || new Date().toISOString(),
             code: o.pickup_code,
             status: o.status,
           };
@@ -380,6 +439,7 @@ export default function ZapolsOrdering() {
       total,
       payment: pay,
       time: clock(),
+      createdAt: new Date().toISOString(),
       code: currentCode,
       status: "pending",
     };
@@ -560,6 +620,7 @@ export default function ZapolsOrdering() {
       total: parseInt((pin_(/TOTAL:\*?\s*₦?([\d,]+)/i) || "0").replace(/,/g, ""), 10),
       payment: pin_(/Payment:\*?\s*(.+)/i) || "Pending",
       time: clock(),
+      createdAt: new Date().toISOString(),
       code: extractedPickupCode,
       status: "pending",
     };
@@ -599,6 +660,121 @@ export default function ZapolsOrdering() {
     setStatus(t.id, "delivered");
     say(`Order #${t.id} verified and handed over!`);
   };
+
+  /* Phone Call / Walk-In Order Handling */
+  const phoneLines = useMemo(
+    () => menu.filter((i) => phoneCart[i.id]).map((i) => ({ ...i, qty: phoneCart[i.id], line: phoneCart[i.id] * i.price })),
+    [menu, phoneCart]
+  );
+  const phoneCount = phoneLines.reduce((s, l) => s + l.qty, 0);
+  const phoneSubtotal = phoneLines.reduce((s, l) => s + l.line, 0);
+  const phonePackFee = phoneCount && phonePack === "takeaway" ? PACK_FEE : 0;
+  const phoneService = phoneCount ? SERVICE_FEE : 0;
+  const phoneTotal = phoneSubtotal + phonePackFee + phoneService;
+
+  const adjustPhoneCart = (id: string, d: number) =>
+    setPhoneCart((c) => {
+      const n = Math.max(0, (c[id] || 0) + d);
+      const { [id]: _drop, ...rest } = c;
+      return n ? { ...rest, [id]: n } : rest;
+    });
+
+  const openPhoneOrderModal = () => {
+    setPhoneOrderId(newOrderId());
+    setPhoneCode(newCode());
+    setPhoneCart({});
+    setPhoneName("");
+    setPhoneLoc("");
+    setPhoneNum("");
+    setPhoneNotes("");
+    setPhonePack("takeaway");
+    setPhonePay(PAYMENTS[0]);
+    setPhoneQuery("");
+    setPhoneCat("All");
+    setModal("phoneOrder");
+  };
+
+  const submitPhoneOrder = () => {
+    if (!phoneCount) return say("Select at least one food item.", true);
+    if (!phoneName.trim()) return say("Enter caller name or desk location.", true);
+
+    const summary = [
+      ...phoneLines.map((l) => `${l.qty}x ${l.name}`),
+      phonePack === "takeaway" ? `Takeaway pack (₦${PACK_FEE})` : "",
+      `Service charge (₦${SERVICE_FEE})`,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const customerStr = `${phoneName.trim()} — ${phoneLoc.trim() || "Phone / Walk-in"}${
+      phoneNum.trim() ? ` (${phoneNum.trim()})` : ""
+    }`;
+
+    const newTicket: Ticket = {
+      id: phoneOrderId,
+      customer: customerStr,
+      summary,
+      notes: phoneNotes.trim(),
+      total: phoneTotal,
+      payment: phonePay,
+      time: clock(),
+      createdAt: new Date().toISOString(),
+      code: phoneCode,
+      status: "pending",
+    };
+
+    setTickets((prev) => [newTicket, ...prev]);
+
+    if (isSupabaseConfigured) {
+      saveOrderToSupabase({
+        order_id: phoneOrderId,
+        customer_name: phoneName.trim(),
+        customer_location: phoneLoc.trim() || "Phone Order",
+        summary,
+        notes: phoneNotes.trim(),
+        total: phoneTotal,
+        payment_method: phonePay,
+        packaging: phonePack,
+        pickup_code: phoneCode,
+        status: "pending",
+        items_json: phoneLines.map((l) => ({ id: l.id, name: l.name, qty: l.qty, price: l.price })),
+      });
+    }
+
+    say(`Phone order #${phoneOrderId} recorded! Pickup code: ${phoneCode}`);
+    setModal(null);
+  };
+
+  /* Date Grouping for Kitchen Board */
+  const dateGroups = useMemo(() => {
+    const sorted = [...tickets].sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    const filtered = sorted.filter((t) => {
+      if (kStatusFilter === "open" && t.status === "delivered") return false;
+      if (kStatusFilter === "delivered" && t.status !== "delivered") return false;
+
+      if (kDateFilter !== "all") {
+        const g = formatOrderDateGroup(t.createdAt);
+        if (kDateFilter === "today" && g !== "Today") return false;
+        if (kDateFilter === "yesterday" && g !== "Yesterday") return false;
+        if (kDateFilter === "older" && (g === "Today" || g === "Yesterday")) return false;
+      }
+      return true;
+    });
+
+    const map = new Map<string, Ticket[]>();
+    for (const t of filtered) {
+      const g = formatOrderDateGroup(t.createdAt);
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(t);
+    }
+
+    return Array.from(map.entries()).map(([label, items]) => ({ label, items }));
+  }, [tickets, kStatusFilter, kDateFilter]);
 
   /* Settings */
   const [draft, setDraft] = useState(settings);
@@ -905,100 +1081,186 @@ export default function ZapolsOrdering() {
             <span className={B("zp-sync-badge", isSupabaseConfigured && "online")}>
               {isSupabaseConfigured ? "🟢 Supabase Database Synced" : "🟡 Local Mode (Supabase not configured)"}
             </span>
+            <div className="zp-kitchen-tools">
+              <button
+                type="button"
+                onClick={openPhoneOrderModal}
+                className="zp-btn zp-btn-wa"
+                style={{ padding: "0.55rem 0.95rem" }}
+              >
+                📞 Take Phone / Walk-in Order
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPasteBox((prev) => !prev)}
+                className="zp-btn zp-btn-line"
+                style={{ padding: "0.55rem 0.95rem" }}
+              >
+                📋 {showPasteBox ? "Hide Paste Box" : "Paste WhatsApp Order"}
+              </button>
+            </div>
           </div>
 
-          <section className="zp-card">
-            <textarea
-              value={paste}
-              onChange={(e) => setPaste(e.target.value)}
-              rows={3}
-              placeholder="Paste incoming WhatsApp message here to pin it to board..."
-              className="zp-field zp-field-mono"
-              aria-label="Paste WhatsApp order"
-            />
-            <button onClick={pinTicket} className="zp-btn zp-btn-dark">
-              Pin to Board
-            </button>
-          </section>
-
-          {tickets.length === 0 && (
-            <p className="zp-empty">No active tickets. Orders placed from customer devices appear here automatically.</p>
+          {showPasteBox && (
+            <section className="zp-card">
+              <textarea
+                value={paste}
+                onChange={(e) => setPaste(e.target.value)}
+                rows={3}
+                placeholder="Paste incoming WhatsApp message here to pin it to board..."
+                className="zp-field zp-field-mono"
+                aria-label="Paste WhatsApp order"
+              />
+              <button onClick={pinTicket} className="zp-btn zp-btn-dark">
+                Pin to Board
+              </button>
+            </section>
           )}
 
-          {tickets.map((t) => (
-            <article key={t.id} className={B("zp-tk", t.status === "delivered" && "done")}>
-              <div className="zp-tk-head">
-                <p className="zp-tk-id">
-                  #{t.id}
-                  <small>{t.time}</small>
-                </p>
-                <span className={`zp-badge zp-badge-${t.status}`}>
-                  {t.status === "pending" ? "To pack" : t.status === "packed" ? "Ready" : "Handed over"}
+          {/* Kitchen Filters */}
+          <div style={{ display: "grid", gap: "0.35rem" }}>
+            <div className="zp-kitchen-filters">
+              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--mute)", marginRight: "0.2rem" }}>
+                Status:
+              </span>
+              {(
+                [
+                  ["open", `Active (${openCount})`],
+                  ["all", `All (${tickets.length})`],
+                  ["delivered", `Delivered (${tickets.length - openCount})`],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKStatusFilter(k)}
+                  className={B("zp-kfilter", kStatusFilter === k && "on")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="zp-kitchen-filters">
+              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--mute)", marginRight: "0.2rem" }}>
+                Dates:
+              </span>
+              {(
+                [
+                  ["all", "All Dates"],
+                  ["today", "Today"],
+                  ["yesterday", "Yesterday"],
+                  ["older", "Older Dates"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKDateFilter(k)}
+                  className={B("zp-kfilter", kDateFilter === k && "on")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {dateGroups.length === 0 && (
+            <p className="zp-empty">No orders found for the selected filter.</p>
+          )}
+
+          {dateGroups.map((group) => (
+            <section key={group.label} className="zp-date-section">
+              <div className="zp-date-header">
+                <div className="zp-date-title">
+                  <span>📅</span>
+                  <span>{group.label}</span>
+                </div>
+                <span className="zp-date-count">
+                  {group.items.length} {group.items.length === 1 ? "order" : "orders"}
                 </span>
               </div>
-              <div>
-                <p className="zp-tk-who">{t.customer}</p>
-                <p className="zp-tk-sum">{t.summary}</p>
-                {t.notes && <p className="zp-note">Note: {t.notes}</p>}
+
+              <div className="zp-date-tickets">
+                {group.items.map((t) => (
+                  <article key={t.id} className={B("zp-tk", t.status === "delivered" && "done")}>
+                    <div className="zp-tk-head">
+                      <p className="zp-tk-id">
+                        #{t.id}
+                        <small>
+                          {t.time} · {formatOrderDateGroup(t.createdAt)}
+                        </small>
+                      </p>
+                      <span className={`zp-badge zp-badge-${t.status}`}>
+                        {t.status === "pending" ? "To pack" : t.status === "packed" ? "Ready" : "Handed over"}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="zp-tk-who">{t.customer}</p>
+                      <p className="zp-tk-sum">{t.summary}</p>
+                      {t.notes && <p className="zp-note">Note: {t.notes}</p>}
+                    </div>
+                    <p className="zp-tk-pay">
+                      {naira(t.total)} <span>({t.payment})</span>
+                    </p>
+
+                    {t.status !== "delivered" && (
+                      <div className="zp-tk-actions">
+                        {t.status === "pending" && (
+                          <button onClick={() => setStatus(t.id, "packed")} className="zp-btn zp-btn-line">
+                            Mark Packed
+                          </button>
+                        )}
+                        {t.code ? (
+                          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", width: "100%" }}>
+                            <input
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={4}
+                              value={codeIn[t.id] || ""}
+                              onChange={(e) => setCodeIn({ ...codeIn, [t.id]: e.target.value })}
+                              placeholder="Pickup Code"
+                              aria-label={`Pickup code for ${t.id}`}
+                              className="zp-field zp-field-code"
+                            />
+                            <button onClick={() => handOver(t)} className="zp-btn zp-btn-dark" style={{ flex: 1 }}>
+                              Verify &amp; Hand Over
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => handOver(t)} className="zp-btn zp-btn-dark">
+                            Mark Handed Over
+                          </button>
+                        )}
+
+                        {/* Staff Code Peek Helper */}
+                        {t.code && (
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
+                            <button
+                              onClick={() =>
+                                setRevealedCodes((prev) => ({ ...prev, [t.id]: !prev[t.id] }))
+                              }
+                              className="zp-link-danger"
+                              style={{ color: "#10231c", fontSize: "0.78rem" }}
+                            >
+                              {revealedCodes[t.id] ? `Expected Code: ${t.code}` : "Staff peek: view expected code"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => removeTicket(t.id)}
+                      className="zp-link-danger"
+                      style={{ justifySelf: "start" }}
+                    >
+                      Remove Ticket
+                    </button>
+                  </article>
+                ))}
               </div>
-              <p className="zp-tk-pay">
-                {naira(t.total)} <span>({t.payment})</span>
-              </p>
-
-              {t.status !== "delivered" && (
-                <div className="zp-tk-actions">
-                  {t.status === "pending" && (
-                    <button onClick={() => setStatus(t.id, "packed")} className="zp-btn zp-btn-line">
-                      Mark Packed
-                    </button>
-                  )}
-                  {t.code ? (
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", width: "100%" }}>
-                      <input
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={4}
-                        value={codeIn[t.id] || ""}
-                        onChange={(e) => setCodeIn({ ...codeIn, [t.id]: e.target.value })}
-                        placeholder="Pickup Code"
-                        aria-label={`Pickup code for ${t.id}`}
-                        className="zp-field zp-field-code"
-                      />
-                      <button onClick={() => handOver(t)} className="zp-btn zp-btn-dark" style={{ flex: 1 }}>
-                        Verify &amp; Hand Over
-                      </button>
-                    </div>
-                  ) : (
-                    <button onClick={() => handOver(t)} className="zp-btn zp-btn-dark">
-                      Mark Handed Over
-                    </button>
-                  )}
-
-                  {/* Staff Code Peek Helper */}
-                  {t.code && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
-                      <button
-                        onClick={() =>
-                          setRevealedCodes((prev) => ({ ...prev, [t.id]: !prev[t.id] }))
-                        }
-                        className="zp-link-danger"
-                        style={{ color: "#10231c", fontSize: "0.78rem" }}
-                      >
-                        {revealedCodes[t.id] ? `Expected Code: ${t.code}` : "Staff peek: view expected code"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <button
-                onClick={() => removeTicket(t.id)}
-                className="zp-link-danger"
-                style={{ justifySelf: "start" }}
-              >
-                Remove Ticket
-              </button>
-            </article>
+            </section>
           ))}
         </main>
       )}
@@ -1239,6 +1501,247 @@ export default function ZapolsOrdering() {
                 </div>
               </div>
             ))}
+          </div>
+        </Sheet>
+      )}
+{/* Phone Call / Walk-In Order Sheet */}
+      {modal === "phoneOrder" && (
+        <Sheet
+          title="Take Phone / Walk-in Order"
+          sub="Record a live customer phone order and generate a 4-digit pickup code."
+          onClose={() => setModal(null)}
+        >
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div className="zp-codebox" style={{ margin: "0 0 0.5rem 0", padding: "0.75rem 1rem" }}>
+              <div>
+                <span style={{ fontSize: "0.75rem", display: "block", textTransform: "uppercase" }}>
+                  Caller's Pickup Code:
+                </span>
+                <b style={{ fontSize: "1.1rem" }}>#{phoneOrderId}</b>
+              </div>
+              <span className="zp-code">{phoneCode}</span>
+            </div>
+
+            <div className="zp-two">
+              <label className="zp-label">
+                Caller / Customer Name *
+                <input
+                  value={phoneName}
+                  onChange={(e) => setPhoneName(e.target.value)}
+                  placeholder="e.g. Mr. Emeka"
+                  className="zp-field"
+                  autoFocus
+                />
+              </label>
+              <label className="zp-label">
+                Floor, Desk or Pickup Time
+                <input
+                  value={phoneLoc}
+                  onChange={(e) => setPhoneLoc(e.target.value)}
+                  placeholder="e.g. 4th Floor Accounts, 1:30 PM"
+                  className="zp-field"
+                />
+              </label>
+            </div>
+
+            <label className="zp-label">
+              Caller Phone Number (optional)
+              <input
+                type="tel"
+                value={phoneNum}
+                onChange={(e) => setPhoneNum(e.target.value)}
+                placeholder="e.g. 08031234567"
+                className="zp-field"
+              />
+            </label>
+
+            {/* Quick Food Items Selector */}
+            <div style={{ display: "grid", gap: "0.4rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="zp-label" style={{ margin: 0 }}>
+                  Select Menu Items ({phoneCount} chosen):
+                </span>
+                {phoneCount > 0 && (
+                  <button type="button" onClick={() => setPhoneCart({})} className="zp-link-danger">
+                    Clear items
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: "0.35rem", overflowX: "auto", paddingBottom: "0.2rem" }}>
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setPhoneCat(c)}
+                    className={B("zp-pill", phoneCat === c && "on")}
+                    style={{ padding: "0.3rem 0.65rem", fontSize: "0.78rem", minHeight: "30px" }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                value={phoneQuery}
+                onChange={(e) => setPhoneQuery(e.target.value)}
+                placeholder="Search food item..."
+                className="zp-field"
+                style={{ margin: 0, padding: "0.5rem 0.75rem", fontSize: "0.9rem" }}
+              />
+
+              <div className="zp-phone-item-list">
+                {menu
+                  .filter(
+                    (i) =>
+                      (phoneCat === "All" || i.category === phoneCat) &&
+                      (!phoneQuery.trim() ||
+                        i.name.toLowerCase().includes(phoneQuery.trim().toLowerCase()))
+                  )
+                  .map((i) => {
+                    const q = phoneCart[i.id] || 0;
+                    return (
+                      <div key={i.id} className={B("zp-phone-item-row", q > 0 && "has-qty")}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: "0.88rem" }}>{i.name}</p>
+                          <small style={{ color: "var(--mute)", fontSize: "0.75rem" }}>
+                            {i.category} · {naira(i.price)}
+                          </small>
+                        </div>
+                        <div className="zp-stepper" style={{ minHeight: "36px", padding: "0.15rem" }}>
+                          <button
+                            type="button"
+                            onClick={() => adjustPhoneCart(i.id, -1)}
+                            style={{ width: "1.75rem", height: "1.75rem", fontSize: "1.1rem" }}
+                          >
+                            −
+                          </button>
+                          <span style={{ fontSize: "0.88rem", minWidth: "1.25rem" }}>{q}</span>
+                          <button
+                            type="button"
+                            onClick={() => adjustPhoneCart(i.id, 1)}
+                            style={{ width: "1.75rem", height: "1.75rem", fontSize: "1.1rem" }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Packaging and Payment */}
+            <div className="zp-two">
+              <fieldset className="zp-fieldset">
+                <legend className="zp-legend">Packaging</legend>
+                <div className="zp-choices">
+                  {(
+                    [
+                      ["takeaway", "Takeaway pack", `+${naira(PACK_FEE)}`],
+                      ["eatin", "Own plate", "₦0"],
+                    ] as const
+                  ).map(([k, l, p]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setPhonePack(k)}
+                      aria-pressed={phonePack === k}
+                      className={B("zp-choice", phonePack === k && "on")}
+                      style={{ padding: "0.55rem 0.6rem", minHeight: "40px" }}
+                    >
+                      {l} <small>{p}</small>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="zp-fieldset">
+                <legend className="zp-legend">Payment</legend>
+                <select
+                  value={phonePay}
+                  onChange={(e) => setPhonePay(e.target.value)}
+                  className="zp-field"
+                  style={{ marginTop: 0 }}
+                >
+                  {PAYMENTS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </fieldset>
+            </div>
+
+            <label className="zp-label">
+              Kitchen Prep Note (optional)
+              <input
+                value={phoneNotes}
+                onChange={(e) => setPhoneNotes(e.target.value)}
+                placeholder="e.g. Extra pepper, meat fried soft"
+                className="zp-field"
+              />
+            </label>
+
+            {/* Cost Breakdown */}
+            <dl
+              className="zp-lines"
+              style={{
+                background: "rgba(11, 59, 46, 0.05)",
+                padding: "0.75rem",
+                borderRadius: "10px",
+                margin: 0,
+                color: "var(--green)",
+              }}
+            >
+              <div>
+                <dt>Food subtotal</dt>
+                <dd>{naira(phoneSubtotal)}</dd>
+              </div>
+              <div>
+                <dt>Packaging</dt>
+                <dd>{naira(phonePackFee)}</dd>
+              </div>
+              <div>
+                <dt>Service charge</dt>
+                <dd>{naira(phoneService)}</dd>
+              </div>
+              <div className="zp-total" style={{ color: "var(--green)", borderTopColor: "var(--line)" }}>
+                <dt>Total to Collect</dt>
+                <dd>{naira(phoneTotal)}</dd>
+              </div>
+            </dl>
+
+            <div style={{ display: "grid", gap: "0.5rem", marginTop: "0.25rem" }}>
+              <button
+                type="button"
+                onClick={submitPhoneOrder}
+                className="zp-btn zp-btn-dark zp-btn-lg zp-btn-block"
+              >
+                ✅ Record Order &amp; Pin to Board
+              </button>
+              {phoneNum.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const waNum = phoneNum.replace(/\D/g, "");
+                    const targetNum = waNum.startsWith("0") ? "234" + waNum.slice(1) : waNum;
+                    const itemsText = phoneLines
+                      .map((l) => `• ${l.qty}x ${l.name} — ${naira(l.line)}`)
+                      .join("\n");
+                    const text = `*🍽️ Order Confirmed — ${settings.vendorName}*\n*Order ID:* #${phoneOrderId}\n*Customer:* ${phoneName}\n*Pickup Code:* ${phoneCode} (show this to collect food)\n------------------------------\n${itemsText}\n*TOTAL:* ${naira(phoneTotal)}\n*Payment:* ${phonePay}`;
+                    window.open(
+                      `https://wa.me/${targetNum}?text=${encodeURIComponent(text)}`,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }}
+                  className="zp-btn zp-btn-wa zp-btn-block"
+                >
+                  💬 WhatsApp Ticket to Caller
+                </button>
+              )}
+            </div>
           </div>
         </Sheet>
       )}

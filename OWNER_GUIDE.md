@@ -61,12 +61,33 @@ Tap the **"Lock"** button in the top-right header whenever you hand your phone t
 
 Once unlocked, tap the **"Kitchen"** button in the header to switch to the live order board.
 
-### Two Ways Orders Appear:
-1. **Automatic (with Supabase connected):** Any order placed by a customer appears on your kitchen screen instantly with zero delay.
-2. **Manual WhatsApp Pinning:** If a customer sent an order directly via WhatsApp or text:
+### Three Ways Orders Appear:
+1. **Automatic (with Supabase connected):** Any order placed by a customer appears on your kitchen screen instantly in real-time.
+2. **Take Phone Call / Walk-In Order (New):**
+   - When a customer calls on the phone or walks in, tap the **"📞 Take Phone Order"** button in the top tools bar.
+   - Enter their Name and Floor/Desk/Time.
+   - Tap the food items on the quick menu picker (with search & category filters) to set quantities.
+   - Select packaging (*Takeaway pack +₦300* or *Own plate ₦0*) and payment method.
+   - Read the generated **4-digit Pickup Code** (e.g. `4910`) to the caller immediately over the phone!
+   - Tap **"✅ Record Order & Pin to Board"**. It pins straight to your active kitchen board and syncs across all devices.
+   - *(Optional)* If caller phone number is entered, tap **"💬 WhatsApp Ticket to Caller"** to send them a receipt with their pickup code.
+3. **Manual WhatsApp Pinning:** If a customer sent an order directly via WhatsApp or text:
    - Copy the message text from WhatsApp.
    - Paste it into the **"Paste incoming WhatsApp message here"** box on the Kitchen Board.
    - Tap **"Pin to Board"**. The system automatically extracts the customer's name, food items, total, and pickup code.
+
+### 📅 Order Dates & Date Grouping:
+Incoming orders are automatically grouped by the date they arrived with clear headings:
+- **"Today"** — Orders placed today.
+- **"Yesterday"** — Orders placed yesterday.
+- **"Wednesday 25th November"** — Specific calendar date for older orders.
+
+### 🔍 Quick Filter Pills:
+Filter the kitchen display anytime using the top filter buttons:
+- **All Orders**: Shows every recorded order.
+- **Today Only**: Shows only orders received today during lunch rush.
+- **To Pack / Ready**: Filters to only active pending orders that need action.
+- **Handed Over**: Shows historical completed orders.
 
 ### Ticket Statuses:
 - **To pack (Yellow):** New incoming order that needs preparation.
