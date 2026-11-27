@@ -793,6 +793,22 @@ export default function ZapolsOrdering() {
 
   const openCount = tickets.filter((t) => t.status !== "delivered").length;
 
+  const activePlacedTicket = useMemo(() => {
+    if (!activePlacedOrder) return null;
+    const match = tickets.find((t) => t.id === activePlacedOrder.id);
+    return match || activePlacedOrder;
+  }, [activePlacedOrder, tickets]);
+
+  const activeUserOrdersCount = useMemo(() => {
+    return history.filter((e) => {
+      const match = tickets.find((t) => t.id === e.id);
+      if (match) {
+        return match.status !== "delivered";
+      }
+      return false;
+    }).length;
+  }, [history, tickets]);
+
   return (
     <div className="zp-app">
       {toast && (
@@ -814,7 +830,7 @@ export default function ZapolsOrdering() {
           <div className="zp-actions">
             <button onClick={() => setModal("history")} className="zp-btn zp-btn-line" aria-label="My orders">
               Orders
-              {history.length > 0 && <span className="zp-count">{history.length}</span>}
+              {activeUserOrdersCount > 0 && <span className="zp-count">{activeUserOrdersCount}</span>}
             </button>
             {staff && (
               <>
@@ -840,7 +856,7 @@ export default function ZapolsOrdering() {
       {view === "customer" ? (
         <main className="zp-main">
           {/* Active Order Banner if order was placed */}
-          {activePlacedOrder && (
+          {activePlacedTicket && activePlacedTicket.status !== "delivered" && (
             <div
               style={{
                 display: "flex",
@@ -850,14 +866,18 @@ export default function ZapolsOrdering() {
                 borderRadius: "14px",
                 background: "#0b3b2e",
                 color: "#fff",
+                marginBottom: "1rem",
               }}
             >
               <div>
                 <p style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem" }}>
-                  Active Order #{activePlacedOrder.id}
+                  Active Order #{activePlacedTicket.id}
                 </p>
                 <p style={{ margin: "0.15rem 0 0", fontSize: "0.8rem", color: "#f2c230" }}>
-                  Pickup Code: <b>{activePlacedOrder.code}</b>
+                  Pickup Code: <b>{activePlacedTicket.code}</b> · Status:{" "}
+                  <span style={{ textTransform: "capitalize", fontWeight: 700 }}>
+                    {activePlacedTicket.status === "pending" ? "To pack" : "Ready for pickup"}
+                  </span>
                 </p>
               </div>
               <button
@@ -866,6 +886,36 @@ export default function ZapolsOrdering() {
                 style={{ padding: "0.45rem 0.85rem", fontSize: "0.85rem", minHeight: "36px" }}
               >
                 Show Code
+              </button>
+            </div>
+          )}
+
+          {activePlacedTicket && activePlacedTicket.status === "delivered" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.75rem 1rem",
+                borderRadius: "14px",
+                background: "rgba(11, 59, 46, 0.08)",
+                border: "1px solid rgba(11, 59, 46, 0.2)",
+                color: "var(--green)",
+                marginBottom: "1rem",
+              }}
+            >
+              <div>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: "0.9rem" }}>
+                  ✅ Order #{activePlacedTicket.id} Delivered!
+                </p>
+                <small style={{ color: "var(--mute)" }}>Enjoy your meal!</small>
+              </div>
+              <button
+                onClick={() => setActivePlacedOrder(null)}
+                className="zp-btn zp-btn-line"
+                style={{ padding: "0.35rem 0.65rem", fontSize: "0.8rem", minHeight: "30px" }}
+              >
+                Dismiss
               </button>
             </div>
           )}
@@ -1382,22 +1432,29 @@ export default function ZapolsOrdering() {
       {modal === "history" && (
         <Sheet title="My Orders" sub="Reorder any past meal plate with one tap." onClose={() => setModal(null)}>
           {history.length === 0 && <p className="zp-empty">No past orders yet. Orders you place will show here.</p>}
-          {history.map((e) => (
-            <div key={e.id + e.date} className="zp-hist">
-              <div className="zp-hist-top">
-                <b>#{e.id}</b>
-                <span className="zp-hist-code">Code: {e.code || "----"}</span>
-                <span>{e.date}</span>
+          {history.map((e) => {
+            const currentTicket = tickets.find((t) => t.id === e.id);
+            const status: Status = currentTicket ? currentTicket.status : "delivered";
+            return (
+              <div key={e.id + e.date} className="zp-hist">
+                <div className="zp-hist-top">
+                  <b>#{e.id}</b>
+                  <span className={`zp-badge zp-badge-${status}`}>
+                    {status === "pending" ? "To pack" : status === "packed" ? "Ready" : "Delivered"}
+                  </span>
+                  <span className="zp-hist-code">Code: {e.code || "----"}</span>
+                  <span>{e.date}</span>
+                </div>
+                <p>{e.summaryText}</p>
+                <div className="zp-hist-foot">
+                  <span>{naira(e.total)}</span>
+                  <button onClick={() => reorder(e)} className="zp-btn zp-btn-dark">
+                    Reorder
+                  </button>
+                </div>
               </div>
-              <p>{e.summaryText}</p>
-              <div className="zp-hist-foot">
-                <span>{naira(e.total)}</span>
-                <button onClick={() => reorder(e)} className="zp-btn zp-btn-dark">
-                  Reorder
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </Sheet>
       )}
 
