@@ -12,7 +12,7 @@ export type DbOrder = {
   payment_method: string;
   packaging: string;
   pickup_code: string;
-  status: "pending" | "packed" | "delivered";
+  status: "pending" | "packed" | "delivered" | "ignored";
   items_json?: any;
 };
 
@@ -69,7 +69,7 @@ export async function fetchOrdersFromSupabase(): Promise<DbOrder[]> {
 
 export async function updateOrderStatusInSupabase(
   orderId: string,
-  status: "pending" | "packed" | "delivered"
+  status: "pending" | "packed" | "delivered" | "ignored"
 ): Promise<boolean> {
   if (!supabase) return false;
   try {

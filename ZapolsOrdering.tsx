@@ -15,7 +15,7 @@ import {
 
 export type Item = { id: string; name: string; price: number; category: string; desc?: string; available: boolean };
 export type Settings = { vendorName: string; vendorPhone: string; bankInfo: string; staffPin: string };
-export type Status = "pending" | "packed" | "delivered";
+export type Status = "pending" | "packed" | "delivered" | "ignored";
 export type Ticket = {
   id: string;
   customer: string;
@@ -245,7 +245,7 @@ export default function ZapolsOrdering() {
   const [phoneCat, setPhoneCat] = useState("All");
 
   // Kitchen Filters
-  const [kStatusFilter, setKStatusFilter] = useState<"all" | "open" | "delivered">("all");
+  const [kStatusFilter, setKStatusFilter] = useState<"all" | "open" | "delivered" | "ignored">("all");
   const [kDateFilter, setKDateFilter] = useState<"all" | "today" | "yesterday" | "older">("all");
   const [showPasteBox, setShowPasteBox] = useState(false);
 
@@ -746,8 +746,9 @@ export default function ZapolsOrdering() {
     });
 
     const filtered = sorted.filter((t) => {
-      if (kStatusFilter === "open" && t.status === "delivered") return false;
+      if (kStatusFilter === "open" && (t.status === "delivered" || t.status === "ignored")) return false;
       if (kStatusFilter === "delivered" && t.status !== "delivered") return false;
+      if (kStatusFilter === "ignored" && t.status !== "ignored") return false;
 
       if (kDateFilter !== "all") {
         const g = formatOrderDateGroup(t.createdAt);
@@ -783,7 +784,8 @@ export default function ZapolsOrdering() {
     say(`${nu.name.trim()} added.`);
   };
 
-  const openCount = tickets.filter((t) => t.status !== "delivered").length;
+  const openCount = tickets.filter((t) => t.status !== "delivered" && t.status !== "ignored").length;
+  const ignoredCount = tickets.filter((t) => t.status === "ignored").length;
 
   const activePlacedTicket = useMemo(() => {
     if (!activePlacedOrder) return null;
@@ -1169,7 +1171,8 @@ export default function ZapolsOrdering() {
                 [
                   ["all", `All Orders (${tickets.length})`],
                   ["open", `To Pack (${openCount})`],
-                  ["delivered", `Delivered (${tickets.length - openCount})`],
+                  ["delivered", `Delivered (${tickets.length - openCount - ignoredCount})`],
+                  ["ignored", `Ignored (${ignoredCount})`],
                 ] as const
               ).map(([k, label]) => (
                 <button
@@ -1244,7 +1247,7 @@ export default function ZapolsOrdering() {
 
               <div className="zp-date-tickets">
                 {group.items.map((t) => (
-                  <article key={t.id} className={B("zp-tk", t.status === "delivered" && "done")}>
+                  <article key={t.id} className={B("zp-tk", t.status === "delivered" && "done", t.status === "ignored" && "ignored")}>
                     <div className="zp-tk-head">
                       <p className="zp-tk-id">
                         #{t.id}
@@ -1253,7 +1256,7 @@ export default function ZapolsOrdering() {
                         </small>
                       </p>
                       <span className={`zp-badge zp-badge-${t.status}`}>
-                        {t.status === "pending" ? "To pack" : t.status === "packed" ? "Ready" : "Handed over"}
+                        {t.status === "pending" ? "To pack" : t.status === "packed" ? "Ready" : t.status === "ignored" ? "Ignored" : "Handed over"}
                       </span>
                     </div>
                     <div>
@@ -1265,7 +1268,7 @@ export default function ZapolsOrdering() {
                       {naira(t.total)} <span>({t.payment})</span>
                     </p>
 
-                    {t.status !== "delivered" && (
+                    {t.status !== "delivered" && t.status !== "ignored" && (
                       <div className="zp-tk-actions">
                         {t.status === "pending" && (
                           <button onClick={() => setStatus(t.id, "packed")} className="zp-btn zp-btn-line">
@@ -1308,6 +1311,26 @@ export default function ZapolsOrdering() {
                             </button>
                           </div>
                         )}
+
+                        <button
+                          onClick={() => setStatus(t.id, "ignored")}
+                          className="zp-link-danger"
+                          style={{ justifySelf: "start", color: "#64748b", fontSize: "0.78rem" }}
+                        >
+                          Ignore Ticket (test/duplicate)
+                        </button>
+                      </div>
+                    )}
+
+                    {t.status === "ignored" && (
+                      <div className="zp-tk-actions">
+                        <button
+                          onClick={() => setStatus(t.id, "pending")}
+                          className="zp-btn zp-btn-line"
+                          style={{ fontSize: "0.82rem" }}
+                        >
+                          ↩ Restore to Active
+                        </button>
                       </div>
                     )}
                   </article>
@@ -1424,7 +1447,7 @@ export default function ZapolsOrdering() {
                 <div className="zp-hist-top">
                   <b>#{e.id}</b>
                   <span className={`zp-badge zp-badge-${status}`}>
-                    {status === "pending" ? "To pack" : status === "packed" ? "Ready" : "Delivered"}
+                    {status === "pending" ? "To pack" : status === "packed" ? "Ready" : status === "ignored" ? "Ignored" : "Delivered"}
                   </span>
                   <span className="zp-hist-code">Code: {e.code || "----"}</span>
                   <span>{e.date}</span>
