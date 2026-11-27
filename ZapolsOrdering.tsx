@@ -7,7 +7,6 @@ import {
   saveOrderToSupabase,
   fetchOrdersFromSupabase,
   updateOrderStatusInSupabase,
-  deleteOrderFromSupabase,
   supabase,
 } from "./lib/supabase";
 
@@ -578,13 +577,6 @@ export default function ZapolsOrdering() {
     setTickets((t) => t.map((x) => (x.id === id ? { ...x, status } : x)));
     if (isSupabaseConfigured) {
       updateOrderStatusInSupabase(id, status);
-    }
-  };
-
-  const removeTicket = async (id: string) => {
-    setTickets((x) => x.filter((y) => y.id !== id));
-    if (isSupabaseConfigured) {
-      deleteOrderFromSupabase(id);
     }
   };
 
@@ -1318,14 +1310,6 @@ export default function ZapolsOrdering() {
                         )}
                       </div>
                     )}
-
-                    <button
-                      onClick={() => removeTicket(t.id)}
-                      className="zp-link-danger"
-                      style={{ justifySelf: "start" }}
-                    >
-                      Remove Ticket
-                    </button>
                   </article>
                 ))}
               </div>
