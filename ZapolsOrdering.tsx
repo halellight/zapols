@@ -246,7 +246,7 @@ export default function ZapolsOrdering() {
   const [phoneCat, setPhoneCat] = useState("All");
 
   // Kitchen Filters
-  const [kStatusFilter, setKStatusFilter] = useState<"all" | "open" | "delivered">("open");
+  const [kStatusFilter, setKStatusFilter] = useState<"all" | "open" | "delivered">("all");
   const [kDateFilter, setKDateFilter] = useState<"all" | "today" | "yesterday" | "older">("all");
   const [showPasteBox, setShowPasteBox] = useState(false);
 
@@ -1125,8 +1125,8 @@ export default function ZapolsOrdering() {
               </span>
               {(
                 [
-                  ["open", `Active (${openCount})`],
-                  ["all", `All (${tickets.length})`],
+                  ["all", `All Orders (${tickets.length})`],
+                  ["open", `To Pack (${openCount})`],
                   ["delivered", `Delivered (${tickets.length - openCount})`],
                 ] as const
               ).map(([k, label]) => (
@@ -1166,7 +1166,26 @@ export default function ZapolsOrdering() {
           </div>
 
           {dateGroups.length === 0 && (
-            <p className="zp-empty">No orders found for the selected filter.</p>
+            <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--mute)" }}>
+              <p style={{ margin: "0 0 0.5rem 0", fontWeight: 600 }}>
+                {tickets.length === 0
+                  ? "No orders recorded yet. As orders are placed or pinned, they will show here."
+                  : "No orders match the current filter selection."}
+              </p>
+              {tickets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKStatusFilter("all");
+                    setKDateFilter("all");
+                  }}
+                  className="zp-btn zp-btn-line"
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  Show All {tickets.length} Orders (Reset Filters)
+                </button>
+              )}
+            </div>
           )}
 
           {dateGroups.map((group) => (
